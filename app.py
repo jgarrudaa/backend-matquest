@@ -98,6 +98,16 @@ def health():
     return jsonify(app="TriQuest API", status="ok")
 
 
+@app.get("/")
+def index():
+    return jsonify(
+        app="TriQuest API",
+        status="online",
+        health="/api/health",
+        message="API do TriQuest funcionando corretamente.",
+    )
+
+
 @app.post("/api/auth/signup")
 def signup():
     body = request.get_json(silent=True) or {}

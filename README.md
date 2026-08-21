@@ -58,6 +58,8 @@ python app.py
 
 A API estará disponível, por padrão, em `http://127.0.0.1:5000`.
 
+Ao abrir a URL principal, a API retorna uma mensagem JSON informando que o serviço está online.
+
 Teste o estado da aplicação acessando:
 
 ```text

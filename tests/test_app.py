@@ -7,6 +7,13 @@ def test_health_endpoint():
     assert response.get_json() == {"app": "TriQuest API", "status": "ok"}
 
 
+def test_api_root():
+    response = app.test_client().get("/")
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "online"
+    assert response.get_json()["health"] == "/api/health"
+
+
 def test_protected_endpoint_requires_token():
     response = app.test_client().get("/api/dashboard")
     assert response.status_code == 401
