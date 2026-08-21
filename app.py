@@ -1,12 +1,9 @@
 """API REST do TriQuest."""
 
 import os
-import json as json_lib
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
+import requests
 from flask import Flask, jsonify, request
 
 try:
@@ -72,26 +69,34 @@ def access_token():
 def upstream(method, path, *, token=None, params=None, json=None, prefer=None):
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None, (jsonify(error="O Supabase não foi configurado no back-end."), 503)
-    url = f"{SUPABASE_URL}{path}"
-    if params:
-        url = f"{url}?{urlencode(params)}"
-    body = json_lib.dumps(json).encode("utf-8") if json is not None else None
-    upstream_request = Request(url, data=body, headers=supabase_headers(token=token, prefer=prefer), method=method)
     try:
-        with urlopen(upstream_request, timeout=TIMEOUT) as response:
-            content = response.read()
-            payload = json_lib.loads(content) if content else None
-            return payload, None
-    except HTTPError as exc:
-        content = exc.read()
-        try:
-            payload = json_lib.loads(content) if content else {}
-        except (UnicodeDecodeError, json_lib.JSONDecodeError):
-            payload = {}
-        message = payload.get("msg") or payload.get("message") or payload.get("error_description")
-        return None, (jsonify(error=message or "A operação não pôde ser concluída."), exc.code)
-    except (URLError, TimeoutError):
+        response = requests.request(
+            method,
+            f"{SUPABASE_URL}{path}",
+            headers=supabase_headers(token=token, prefer=prefer),
+            params=params,
+            json=json,
+            timeout=TIMEOUT,
+        )
+    except requests.RequestException:
+        app.logger.exception("Falha de conexão com o Supabase")
         return None, (jsonify(error="Não foi possível acessar o banco de dados."), 502)
+
+    try:
+        payload = response.json() if response.content else None
+    except requests.JSONDecodeError:
+        payload = None
+
+    if not response.ok:
+        error_payload = payload if isinstance(payload, dict) else {}
+        message = (
+            error_payload.get("msg")
+            or error_payload.get("message")
+            or error_payload.get("error_description")
+        )
+        return None, (jsonify(error=message or "A operação não pôde ser concluída."), response.status_code)
+
+    return payload, None
 
 
 def require_token():
