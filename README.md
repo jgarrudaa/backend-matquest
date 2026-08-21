@@ -13,7 +13,7 @@ API REST do TriQuest, desenvolvida com Flask. Esta aplicação concentra o acess
 
 ## Requisitos
 
-- Python 3.11 ou superior;
+- Python 3.12 ou superior;
 - projeto configurado no Supabase;
 - `pip` disponível no ambiente.
 
@@ -62,6 +62,24 @@ Teste o estado da aplicação acessando:
 
 ```text
 GET http://127.0.0.1:5000/api/health
+```
+
+## Publicar na Vercel
+
+Crie um projeto da Vercel usando o repositório do back-end. A raiz configurada na Vercel deve ser a pasta que contém `app.py` e `pyproject.toml`.
+
+Não configure Build Command nem Output Directory. A Vercel detecta automaticamente a instância Flask chamada `app` exportada por `app.py`.
+
+Cadastre estas variáveis em **Settings → Environment Variables**:
+
+- `SUPABASE_URL`;
+- `SUPABASE_PUBLISHABLE_KEY`;
+- `FRONTEND_ORIGINS`, contendo o endereço público do front-end.
+
+Depois de salvar as variáveis, faça um novo deploy. O endpoint de verificação será:
+
+```text
+https://seu-backend.vercel.app/api/health
 ```
 
 ## Endpoints
