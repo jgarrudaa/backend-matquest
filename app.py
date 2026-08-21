@@ -37,6 +37,12 @@ def allowed_frontend_origins():
     return DEFAULT_FRONTEND_ORIGINS | {origin.strip() for origin in configured_origins if origin.strip()}
 
 
+def supabase_is_configured():
+    invalid_url = not SUPABASE_URL or "seu-projeto.supabase.co" in SUPABASE_URL
+    invalid_key = not SUPABASE_KEY or SUPABASE_KEY == "sua_chave_publicavel"
+    return not invalid_url and not invalid_key
+
+
 @app.after_request
 def add_cors_headers(response):
     origin = request.headers.get("Origin")
@@ -67,7 +73,7 @@ def access_token():
 
 
 def upstream(method, path, *, token=None, params=None, json=None, prefer=None):
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    if not supabase_is_configured():
         return None, (jsonify(error="O Supabase não foi configurado no back-end."), 503)
     try:
         response = requests.request(

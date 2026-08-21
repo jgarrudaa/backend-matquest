@@ -41,7 +41,7 @@ pip install -r requirements.txt
 Copie `.env.example` para `.env` e preencha as variáveis:
 
 ```env
-SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_URL=https://qlyzuvasybmanktbuipm.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sua_chave_publicavel
 FRONTEND_ORIGINS=https://frontend-matquest.vercel.app,http://127.0.0.1:5500,http://localhost:5500
 FLASK_DEBUG=1
