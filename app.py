@@ -28,16 +28,28 @@ app = Flask(__name__)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 TIMEOUT = 15
+DEFAULT_FRONTEND_ORIGINS = {
+    "https://frontend-matquest.vercel.app",
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+}
+
+
+def allowed_frontend_origins():
+    configured_origins = os.getenv("FRONTEND_ORIGINS", "").split(",")
+    return DEFAULT_FRONTEND_ORIGINS | {origin.strip() for origin in configured_origins if origin.strip()}
 
 
 @app.after_request
 def add_cors_headers(response):
-    allowed = [origin.strip() for origin in os.getenv("FRONTEND_ORIGINS", "*").split(",")]
     origin = request.headers.get("Origin")
-    if "*" in allowed or origin in allowed:
-        response.headers["Access-Control-Allow-Origin"] = origin or "*"
+    allowed_origins = allowed_frontend_origins()
+    if origin and ("*" in allowed_origins or origin in allowed_origins):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers.add("Vary", "Origin")
     response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Max-Age"] = "86400"
     return response
 
 

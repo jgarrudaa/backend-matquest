@@ -24,3 +24,25 @@ def test_unknown_endpoint_returns_json():
     response = app.test_client().get("/api/inexistente")
     assert response.status_code == 404
     assert response.is_json
+
+
+def test_production_frontend_is_allowed_by_cors():
+    response = app.test_client().options(
+        "/api/auth/login",
+        headers={
+            "Origin": "https://frontend-matquest.vercel.app",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["Access-Control-Allow-Origin"] == "https://frontend-matquest.vercel.app"
+    assert "POST" in response.headers["Access-Control-Allow-Methods"]
+
+
+def test_unknown_origin_is_not_allowed_by_cors():
+    response = app.test_client().options(
+        "/api/auth/login",
+        headers={"Origin": "https://site-nao-autorizado.example"},
+    )
+    assert "Access-Control-Allow-Origin" not in response.headers
