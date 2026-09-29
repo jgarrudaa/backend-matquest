@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 from flask import Flask, jsonify, request
@@ -24,7 +25,10 @@ app = Flask(__name__)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+EMAIL_CONFIRMATION_REDIRECT_URL = os.getenv(
+    "EMAIL_CONFIRMATION_REDIRECT_URL",
+    "https://frontend-matquest.vercel.app/email-confirmado.html",
+).strip()
 TIMEOUT = 15
 DEFAULT_FRONTEND_ORIGINS = {
     "https://frontend-matquest.vercel.app",
@@ -44,6 +48,16 @@ def supabase_is_configured():
     return not invalid_url and not invalid_key
 
 
+def confirmation_redirect_url():
+    parsed_url = urlsplit(EMAIL_CONFIRMATION_REDIRECT_URL)
+    if parsed_url.scheme not in {"https", "http"} or not parsed_url.netloc or parsed_url.username or parsed_url.password:
+        return None
+    origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    if origin not in allowed_frontend_origins():
+        return None
+    return EMAIL_CONFIRMATION_REDIRECT_URL
+
+
 @app.after_request
 def add_cors_headers(response):
     origin = request.headers.get("Origin")
@@ -57,9 +71,8 @@ def add_cors_headers(response):
     return response
 
 
-def supabase_headers(*, token=None, prefer=None, admin=False):
-    api_key = SUPABASE_SERVICE_ROLE_KEY if admin else SUPABASE_KEY
-    headers = {"apikey": api_key, "Content-Type": "application/json"}
+def supabase_headers(*, token=None, prefer=None):
+    headers = {"apikey": SUPABASE_KEY, "Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     if prefer:
@@ -74,14 +87,14 @@ def access_token():
     return authorization.removeprefix("Bearer ").strip()
 
 
-def upstream(method, path, *, token=None, params=None, json=None, prefer=None, admin=False):
+def upstream(method, path, *, token=None, params=None, json=None, prefer=None):
     if not supabase_is_configured():
         return None, (jsonify(error="O Supabase não foi configurado no back-end."), 503)
     try:
         response = requests.request(
             method,
             f"{SUPABASE_URL}{path}",
-            headers=supabase_headers(token=token, prefer=prefer, admin=admin),
+            headers=supabase_headers(token=token, prefer=prefer),
             params=params,
             json=json,
             timeout=TIMEOUT,
@@ -139,32 +152,48 @@ def signup():
     if not isinstance(body, dict):
         return jsonify(error="Envie os dados de cadastro em formato JSON."), 400
 
-    email = str(body.get("email", "")).strip()
+    raw_email = body.get("email")
     password = body.get("password")
-    if not email or not isinstance(password, str) or not password:
+    if not isinstance(raw_email, str) or not isinstance(password, str):
         return jsonify(error="Informe um e-mail e uma senha."), 400
+    email = raw_email.strip()
+    if "@" not in email or not password:
+        return jsonify(error="Informe um e-mail e uma senha válidos."), 400
+
+    redirect_url = confirmation_redirect_url()
+    if not redirect_url:
+        return jsonify(error="Configure uma URL de confirmação permitida para o front-end."), 503
 
     display_name = str(body.get("name", "")).strip()
-    if SUPABASE_SERVICE_ROLE_KEY:
-        user, error = upstream("POST", "/auth/v1/admin/users", token=SUPABASE_SERVICE_ROLE_KEY, json={
-            "email": email,
-            "password": password,
-            "email_confirm": True,
-            "user_metadata": {"display_name": display_name},
-        }, admin=True)
-        if error:
-            return error
-        payload, error = upstream("POST", "/auth/v1/token", params={"grant_type": "password"}, json={
-            "email": email,
-            "password": password,
-        })
-    else:
-        payload, error = upstream("POST", "/auth/v1/signup", json={
-            "email": email,
-            "password": password,
-            "data": {"display_name": display_name},
-        })
+    payload, error = upstream("POST", "/auth/v1/signup", params={"redirect_to": redirect_url}, json={
+        "email": email,
+        "password": password,
+        "data": {"display_name": display_name},
+    })
     return error or jsonify(payload)
+
+
+@app.post("/api/auth/resend-confirmation")
+def resend_confirmation():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or not isinstance(body.get("email"), str):
+        return jsonify(error="Informe um e-mail válido."), 400
+
+    email = body["email"].strip()
+    if "@" not in email:
+        return jsonify(error="Informe um e-mail válido."), 400
+
+    redirect_url = confirmation_redirect_url()
+    if not redirect_url:
+        return jsonify(error="Configure uma URL de confirmação permitida para o front-end."), 503
+
+    _, error = upstream("POST", "/auth/v1/resend", params={"redirect_to": redirect_url}, json={
+        "type": "signup",
+        "email": email,
+    })
+    if error:
+        return error
+    return jsonify(message="Se houver uma conta aguardando confirmação, um novo link será enviado.")
 
 
 @app.post("/api/auth/login")

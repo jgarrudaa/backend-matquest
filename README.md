@@ -43,13 +43,15 @@ Copie `.env.example` para `.env` e preencha as variáveis:
 ```env
 SUPABASE_URL=https://qlyzuvasybmanktbuipm.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sua_chave_publicavel
-SUPABASE_SERVICE_ROLE_KEY=sua_chave_secreta_service_role
+EMAIL_CONFIRMATION_REDIRECT_URL=https://frontend-matquest.vercel.app/email-confirmado.html
 FRONTEND_ORIGINS=https://frontend-matquest.vercel.app,http://127.0.0.1:5500,http://localhost:5500
 FLASK_DEBUG=1
 PORT=5000
 ```
 
-`FRONTEND_ORIGINS` aceita múltiplas origens separadas por vírgula. `SUPABASE_SERVICE_ROLE_KEY` é opcional, mas necessária para cadastrar contas sem confirmação por e-mail: ela permite ao back-end confirmar a conta e iniciar a sessão imediatamente. Cadastre-a somente como variável secreta do back-end; nunca a inclua no aplicativo ou no front-end. Sem essa chave, o cadastro continua usando o fluxo público do Supabase e segue a configuração de confirmação por e-mail do projeto.
+`FRONTEND_ORIGINS` aceita múltiplas origens separadas por vírgula. `EMAIL_CONFIRMATION_REDIRECT_URL` deve apontar para a página `email-confirmado.html` publicada no front-end, e sua origem também precisa estar em `FRONTEND_ORIGINS`. O back-end rejeita redirects para origens não autorizadas.
+
+No painel do Supabase, mantenha **Confirm email** habilitado em Auth → Providers → Email. Em Auth → URL Configuration, defina a URL do front-end como **Site URL** e adicione a URL de confirmação à lista de **Redirect URLs**. Para produção, configure um SMTP próprio e autentique o domínio remetente (SPF/DKIM/DMARC); o SMTP padrão do Supabase é limitado e pode não entregar mensagens de forma confiável.
 
 ## Executar
 
@@ -77,10 +79,10 @@ Cadastre estas variáveis em **Settings → Environment Variables**:
 
 - `SUPABASE_URL`;
 - `SUPABASE_PUBLISHABLE_KEY`;
-- `SUPABASE_SERVICE_ROLE_KEY` (necessária para cadastro sem confirmação por e-mail);
+- `EMAIL_CONFIRMATION_REDIRECT_URL`, com a URL publicada de `email-confirmado.html`;
 - `FRONTEND_ORIGINS`, contendo o endereço público do front-end.
 
-Use a chave `service_role` legada ou a chave secreta `sb_secret_...` do Supabase Auth. Nunca use a chave `publishable` nessa variável. Depois de salvar as variáveis, faça um novo deploy. O endpoint de verificação será:
+Não configure chave `service_role` para autenticação de usuário. Depois de salvar as variáveis, faça um novo deploy. O endpoint de verificação será:
 
 ```text
 https://seu-backend.vercel.app/api/health
@@ -92,6 +94,7 @@ https://seu-backend.vercel.app/api/health
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | Não | Verifica se a API está ativa |
 | `POST` | `/api/auth/signup` | Não | Cadastra um usuário |
+| `POST` | `/api/auth/resend-confirmation` | Não | Reenvia o e-mail de confirmação |
 | `POST` | `/api/auth/login` | Não | Autentica um usuário |
 | `GET` | `/api/auth/me` | Bearer token | Retorna o usuário atual |
 | `GET` | `/api/questions` | Não | Retorna as perguntas ativas |

@@ -48,16 +48,17 @@ def test_unknown_origin_is_not_allowed_by_cors():
     assert "Access-Control-Allow-Origin" not in response.headers
 
 
-def test_signup_confirms_user_and_returns_session_when_admin_key_is_configured(monkeypatch):
+def test_signup_requests_email_confirmation_with_frontend_redirect(monkeypatch):
     calls = []
 
     def fake_upstream(method, path, **kwargs):
         calls.append((method, path, kwargs))
-        if path == "/auth/v1/admin/users":
-            return {"id": "user-1"}, None
-        return {"access_token": "session-token"}, None
+        return {"id": "user-1", "email": "aluno@example.com"}, None
 
-    monkeypatch.setattr("app.SUPABASE_SERVICE_ROLE_KEY", "server-secret")
+    monkeypatch.setattr(
+        "app.EMAIL_CONFIRMATION_REDIRECT_URL",
+        "https://frontend-matquest.vercel.app/email-confirmado.html",
+    )
     monkeypatch.setattr("app.upstream", fake_upstream)
 
     response = app.test_client().post("/api/auth/signup", json={
@@ -67,23 +68,22 @@ def test_signup_confirms_user_and_returns_session_when_admin_key_is_configured(m
     })
 
     assert response.status_code == 200
-    assert response.get_json() == {"access_token": "session-token"}
-    assert calls[0][1] == "/auth/v1/admin/users"
-    assert calls[0][2]["json"]["email_confirm"] is True
-    assert calls[0][2]["json"]["user_metadata"] == {"display_name": "Aluno"}
-    assert calls[0][2]["admin"] is True
-    assert calls[0][2]["token"] == "server-secret"
-    assert calls[1][1] == "/auth/v1/token"
+    assert response.get_json() == {"id": "user-1", "email": "aluno@example.com"}
+    assert calls[0][1] == "/auth/v1/signup"
+    assert calls[0][2]["params"] == {
+        "redirect_to": "https://frontend-matquest.vercel.app/email-confirmado.html",
+    }
+    assert calls[0][2]["json"]["data"] == {"display_name": "Aluno"}
 
 
-def test_signup_uses_public_signup_when_admin_key_is_missing(monkeypatch):
+def test_signup_rejects_unapproved_confirmation_redirect(monkeypatch):
     calls = []
 
     def fake_upstream(method, path, **kwargs):
         calls.append((method, path, kwargs))
-        return {"user": {"id": "user-1"}}, None
+        return {}, None
 
-    monkeypatch.setattr("app.SUPABASE_SERVICE_ROLE_KEY", "")
+    monkeypatch.setattr("app.EMAIL_CONFIRMATION_REDIRECT_URL", "https://attacker.example/confirm")
     monkeypatch.setattr("app.upstream", fake_upstream)
 
     response = app.test_client().post("/api/auth/signup", json={
@@ -91,9 +91,29 @@ def test_signup_uses_public_signup_when_admin_key_is_missing(monkeypatch):
         "password": "senha-segura",
     })
 
+    assert response.status_code == 503
+    assert response.get_json() == {"error": "Configure uma URL de confirmação permitida para o front-end."}
+    assert calls == []
+
+
+def test_resend_confirmation_uses_supabase_signup_resend(monkeypatch):
+    calls = []
+
+    def fake_upstream(method, path, **kwargs):
+        calls.append((method, path, kwargs))
+        return {}, None
+
+    monkeypatch.setattr("app.upstream", fake_upstream)
+
+    response = app.test_client().post("/api/auth/resend-confirmation", json={
+        "email": "aluno@example.com",
+    })
+
     assert response.status_code == 200
-    assert calls[0][1] == "/auth/v1/signup"
-    assert calls[0][2]["json"]["email"] == "aluno@example.com"
+    assert calls[0][1] == "/auth/v1/resend"
+    assert calls[0][2]["params"]["redirect_to"].endswith("/email-confirmado.html")
+    assert calls[0][2]["json"] == {"type": "signup", "email": "aluno@example.com"}
+    assert "Se houver" in response.get_json()["message"]
 
 
 def test_signup_rejects_missing_email_or_password():
@@ -103,25 +123,8 @@ def test_signup_rejects_missing_email_or_password():
     assert response.get_json() == {"error": "Informe um e-mail e uma senha."}
 
 
-def test_signup_returns_admin_creation_error_without_attempting_login(monkeypatch):
-    calls = []
+def test_resend_confirmation_rejects_invalid_email():
+    response = app.test_client().post("/api/auth/resend-confirmation", json={"email": "invalido"})
 
-    def fake_upstream(method, path, **kwargs):
-        calls.append(path)
-        return None, (app.response_class(
-            response='{"error":"E-mail já cadastrado."}',
-            status=422,
-            mimetype="application/json",
-        ), 422)
-
-    monkeypatch.setattr("app.SUPABASE_SERVICE_ROLE_KEY", "server-secret")
-    monkeypatch.setattr("app.upstream", fake_upstream)
-
-    response = app.test_client().post("/api/auth/signup", json={
-        "email": "aluno@example.com",
-        "password": "senha-segura",
-    })
-
-    assert response.status_code == 422
-    assert response.get_json() == {"error": "E-mail já cadastrado."}
-    assert calls == ["/auth/v1/admin/users"]
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Informe um e-mail válido."}
