@@ -24,6 +24,7 @@ app = Flask(__name__)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 TIMEOUT = 15
 DEFAULT_FRONTEND_ORIGINS = {
     "https://frontend-matquest.vercel.app",
@@ -56,8 +57,9 @@ def add_cors_headers(response):
     return response
 
 
-def supabase_headers(*, token=None, prefer=None):
-    headers = {"apikey": SUPABASE_KEY, "Content-Type": "application/json"}
+def supabase_headers(*, token=None, prefer=None, admin=False):
+    api_key = SUPABASE_SERVICE_ROLE_KEY if admin else SUPABASE_KEY
+    headers = {"apikey": api_key, "Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     if prefer:
@@ -72,14 +74,14 @@ def access_token():
     return authorization.removeprefix("Bearer ").strip()
 
 
-def upstream(method, path, *, token=None, params=None, json=None, prefer=None):
+def upstream(method, path, *, token=None, params=None, json=None, prefer=None, admin=False):
     if not supabase_is_configured():
         return None, (jsonify(error="O Supabase não foi configurado no back-end."), 503)
     try:
         response = requests.request(
             method,
             f"{SUPABASE_URL}{path}",
-            headers=supabase_headers(token=token, prefer=prefer),
+            headers=supabase_headers(token=token, prefer=prefer, admin=admin),
             params=params,
             json=json,
             timeout=TIMEOUT,
@@ -134,11 +136,34 @@ def index():
 @app.post("/api/auth/signup")
 def signup():
     body = request.get_json(silent=True) or {}
-    payload, error = upstream("POST", "/auth/v1/signup", json={
-        "email": str(body.get("email", "")).strip(),
-        "password": body.get("password", ""),
-        "data": {"display_name": str(body.get("name", "")).strip()},
-    })
+    if not isinstance(body, dict):
+        return jsonify(error="Envie os dados de cadastro em formato JSON."), 400
+
+    email = str(body.get("email", "")).strip()
+    password = body.get("password")
+    if not email or not isinstance(password, str) or not password:
+        return jsonify(error="Informe um e-mail e uma senha."), 400
+
+    display_name = str(body.get("name", "")).strip()
+    if SUPABASE_SERVICE_ROLE_KEY:
+        user, error = upstream("POST", "/auth/v1/admin/users", token=SUPABASE_SERVICE_ROLE_KEY, json={
+            "email": email,
+            "password": password,
+            "email_confirm": True,
+            "user_metadata": {"display_name": display_name},
+        }, admin=True)
+        if error:
+            return error
+        payload, error = upstream("POST", "/auth/v1/token", params={"grant_type": "password"}, json={
+            "email": email,
+            "password": password,
+        })
+    else:
+        payload, error = upstream("POST", "/auth/v1/signup", json={
+            "email": email,
+            "password": password,
+            "data": {"display_name": display_name},
+        })
     return error or jsonify(payload)
 
 

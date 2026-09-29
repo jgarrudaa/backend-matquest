@@ -43,12 +43,13 @@ Copie `.env.example` para `.env` e preencha as variáveis:
 ```env
 SUPABASE_URL=https://qlyzuvasybmanktbuipm.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sua_chave_publicavel
+SUPABASE_SERVICE_ROLE_KEY=sua_chave_secreta_service_role
 FRONTEND_ORIGINS=https://frontend-matquest.vercel.app,http://127.0.0.1:5500,http://localhost:5500
 FLASK_DEBUG=1
 PORT=5000
 ```
 
-`FRONTEND_ORIGINS` aceita múltiplas origens separadas por vírgula. Não coloque uma chave `service_role` nesse arquivo.
+`FRONTEND_ORIGINS` aceita múltiplas origens separadas por vírgula. `SUPABASE_SERVICE_ROLE_KEY` é opcional, mas necessária para cadastrar contas sem confirmação por e-mail: ela permite ao back-end confirmar a conta e iniciar a sessão imediatamente. Cadastre-a somente como variável secreta do back-end; nunca a inclua no aplicativo ou no front-end. Sem essa chave, o cadastro continua usando o fluxo público do Supabase e segue a configuração de confirmação por e-mail do projeto.
 
 ## Executar
 
@@ -76,9 +77,10 @@ Cadastre estas variáveis em **Settings → Environment Variables**:
 
 - `SUPABASE_URL`;
 - `SUPABASE_PUBLISHABLE_KEY`;
+- `SUPABASE_SERVICE_ROLE_KEY` (necessária para cadastro sem confirmação por e-mail);
 - `FRONTEND_ORIGINS`, contendo o endereço público do front-end.
 
-Depois de salvar as variáveis, faça um novo deploy. O endpoint de verificação será:
+Use a chave `service_role` legada ou a chave secreta `sb_secret_...` do Supabase Auth. Nunca use a chave `publishable` nessa variável. Depois de salvar as variáveis, faça um novo deploy. O endpoint de verificação será:
 
 ```text
 https://seu-backend.vercel.app/api/health
